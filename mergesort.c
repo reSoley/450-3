@@ -68,7 +68,7 @@ int gen_input(float *A, int n, int input_type) {
     return 0;
 }
 
-int binary_search(float val, float array[], int size, int left) {
+int binary_search(float val, float *array, int left,  int size) {
 	int index = 0;
 	int split = size / 2;
 
@@ -80,26 +80,30 @@ int binary_search(float val, float array[], int size, int left) {
 		index = split;
 	} else if (val <= array[split]) {
 		if (split == 0 || val > array[split - 1]) {
-			index = split + left;
+			index = left + split;
 		} else {
-			index = binary_search(val, array, split, left);
+			index = binary_search(val, array, left, split);
 		}
 	} else if (val > array[split]) {
 		if (split == size - 1 || val < array[split + 1]) {
-			index = split + 1 + left;
+			index = left + split + 1;
 		} else {
-			index = binary_search(val, array + split + 1, size - (split + 1), split + 1);
+			index = binary_search(val, array + split + 1, split + 1, size - (split + 1));
 		}
 	}
 
 	return index;
 }
 
-void merge(float arr_1[], float arr_2[], int size_1, int size_2, float arr_out[]) {
+void merge(float *arr_1, float *arr_2, int size_1, int size_2, float *arr_out) {
 	float *temp_arr;
 	int temp_size;
 
+	// TODO Check if this is actually a problem, but I think switching two
+	// pointers in the same array will screw things up really badly
+
 	// We want to "merge" the smaller array into the larger array
+	// so make sure array 2 is the smaller array
 	if (size_1 < size_2) {
 		temp_arr = arr_1;
 		arr_1 = arr_2;
@@ -116,7 +120,7 @@ void merge(float arr_1[], float arr_2[], int size_1, int size_2, float arr_out[]
 	}
 
 	int mid_1 = size_1 / 2;
-	int mid_2 = binary_search(arr_1[mid_1], arr_2, size_2, 0);
+	int mid_2 = binary_search(arr_1[mid_1], arr_2, 0, size_2);
 	int mid_out = mid_1 + mid_2;
 	arr_out[mid_out] = arr_1[mid_1];
 
@@ -133,26 +137,18 @@ void parallel_mergesort(float *A, float *B, int low, int high) {
 	int mid;
 
 	if (low + 1 < high) {
-		mid = (low + high) / 2;
-		fprintf(stderr, "low: %d mid: %d high: %d\n", low, mid, high);
-		fprintf(stderr, "half_1_size: %d half_2_size: %d\n", mid-low, high-mid);
-		for(int i = 0; i < mid-low; i++){
-			printf("%f ", A[i]);
-		}
-		printf("\n");
-		for(int i = 0; i < high-mid; i++){
-			printf("%f ", (A+mid)[i]);
-		}
-		printf("\n");
-		printf("\n");
-//#pragma omp parallel sections
+		mid = (low + high + 1) / 2;		// Add 1 so that left split is larger
+#pragma omp parallel sections
 		{
-//#pragma omp section
+#pragma omp section
 			parallel_mergesort(A, B, low, mid);
-//#pragma omp section
+#pragma omp section
 			parallel_mergesort(A, B, mid, high);
 		}
-		merge(A, A+mid, mid-low, high-mid, B);
+
+		merge(A+low, A+mid, mid-low, high-mid, B+low);
+		//fprintf(stderr, "low: %d mid: %d high: %d\n", low, mid, high);
+		//fprintf(stderr, "half_1_size: %d half_2_size: %d\n", mid-low, high-mid);
 	}
 }
 
@@ -188,7 +184,7 @@ int main(int argc, char **argv) {
     assert(input_type <= 4);
 
     gen_input(A, n, input_type);
-	for (int i = 0; i < n-1; i++) {
+	for (int i = 0; i < n - 1; i++) {
 		printf("%f, ", A[i]);
 	}
 	printf("%f\n", A[n - 1]);
@@ -200,7 +196,7 @@ int main(int argc, char **argv) {
 
     elt = timer() - elt;
 
-	for (int i = 0; i < n-1; i++) {
+	for (int i = 0; i < n - 1; i++) {
 		printf("%f, ", B[i]);
 	}
 	printf("%f\n", B[n - 1]);
