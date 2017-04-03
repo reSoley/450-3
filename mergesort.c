@@ -68,87 +68,90 @@ int gen_input(float *A, int n, int input_type) {
     return 0;
 }
 
-int binary_search(float val, float *array, int left,  int size) {
-	int index = 0;
-	int split = size / 2;
+int binary_search(float val, float *array, int left, int right) {
+	int low = left;
+	int high = left > right + 1 ? left : right + 1;
+	int mid;
 
-	if (size == 0) {
-		return size;
-	}
+	while (low < high) {
+		mid = (low + high) / 2;
 
-	if (val == array[split] && (split == 0 || val != array[split - 1])) {
-		index = split;
-	} else if (val <= array[split]) {
-		if (split == 0 || val > array[split - 1]) {
-			index = left + split;
+		if (val <= array[mid]) {
+			high = mid;
 		} else {
-			index = binary_search(val, array, left, split);
-		}
-	} else if (val > array[split]) {
-		if (split == size - 1 || val < array[split + 1]) {
-			index = left + split + 1;
-		} else {
-			index = binary_search(val, array + split + 1, split + 1, size - (split + 1));
+			low = mid + 1;
 		}
 	}
 
-	return index;
+	return high;
 }
 
-void merge(float *arr_1, float *arr_2, int size_1, int size_2, float *arr_out) {
-	float *temp_arr;
+void merge(float *arr_in, int left_1, int right_1, int left_2, int right_2, float *arr_out, int left_out) {
 	int temp_size;
-
-	// TODO Check if this is actually a problem, but I think switching two
-	// pointers in the same array will screw things up really badly
+	int temp_index;
+	int size_1 = right_1 - left_1 + 1;
+	int size_2 = right_2 - left_2 + 1;
 
 	// We want to "merge" the smaller array into the larger array
 	// so make sure array 2 is the smaller array
 	if (size_1 < size_2) {
-		temp_arr = arr_1;
-		arr_1 = arr_2;
-		arr_2 = temp_arr;
-
 		temp_size = size_1;
 		size_1 = size_2;
 		size_2 = temp_size;
+
+		temp_index = left_1;
+		left_1 = left_2;
+		left_2 = temp_index;
+
+		temp_index = right_1;
+		right_1 = right_2;
+		right_2 = temp_index;
 	}
 
 	// Nothing to merge
-	if (size_1 <= 0) {
+	if (size_1 == 0) {
 		return;
 	}
 
-	int mid_1 = size_1 / 2;
-	int mid_2 = binary_search(arr_1[mid_1], arr_2, 0, size_2);
-	int mid_out = mid_1 + mid_2;
-	arr_out[mid_out] = arr_1[mid_1];
+	int mid_1 = (left_1 + right_1) / 2;
+	int mid_2 = binary_search(arr_in[mid_1], arr_in, left_2, right_2);
+	int mid_out = left_out + (mid_1 - left_1) + (mid_2 - left_2);
+	arr_out[mid_out] = arr_in[mid_1];
 
-#pragma omp parallel sections
-{
-#pragma omp section
-	merge(arr_1, arr_2, mid_1, mid_2, arr_out);
-#pragma omp section
-	merge(arr_1 + mid_1 + 1, arr_2 + mid_2, size_1 - (mid_1 + 1), size_2 - mid_2, arr_out + mid_out + 1);
-}
+	//merge(arr_in, arr_out, left_1, left_2, left_out, mid_1 - 1, mid_2 - 1);
+	merge(arr_in, left_1, mid_1 - 1, left_2, mid_2 - 1, arr_out, left_out);
+	merge(arr_in, mid_1 + 1, right_1, mid_2, right_2, arr_out, mid_out + 1);
+	//merge(arr_in, arr_out, mid_1 + 1, mid_2, mid_out + 1, right_1, right_2);
 }
 
-void parallel_mergesort(float *A, float *B, int low, int high) {
+void parallel_mergesort(float *arr_in, int left, int right, float *arr_out, int left_out) {
 	int mid;
+	int mid_out;
+	int n = right - left + 1;
+	float *temp;
 
-	if (low + 1 < high) {
-		mid = (low + high + 1) / 2;		// Add 1 so that left split is larger
-#pragma omp parallel sections
-		{
-#pragma omp section
-			parallel_mergesort(A, B, low, mid);
-#pragma omp section
-			parallel_mergesort(A, B, mid, high);
-		}
+	if (n == 1) {
+		arr_out[left_out] = arr_in[left];
+	} else {
+		// Note that in the pseudocode, the sort relies on temp being
+		//  [1..n], not [0..n-1]
+		temp = (float *) malloc(sizeof(*temp) * n);
+		//assert(temp != NULL);
+		mid = (left + right) / 2;
+		mid_out = mid - left;
+//#pragma omp parallel sections
+//		{
+//#pragma omp section
+			parallel_mergesort(arr_in, left, mid, temp, 0);
+//#pragma omp section
+			parallel_mergesort(arr_in, mid + 1, right, temp, mid_out + 1);
+//		}
 
-		merge(A+low, A+mid, mid-low, high-mid, B+low);
-		//fprintf(stderr, "low: %d mid: %d high: %d\n", low, mid, high);
-		//fprintf(stderr, "half_1_size: %d half_2_size: %d\n", mid-low, high-mid);
+		//merge(A+low, A+mid, mid-low, high-mid, B+low);
+		//merge(A, low, mid, low, mid, high);
+		merge(temp, 0, mid_out, mid_out + 1, n, arr_out, left_out);
+		free(temp);
+		temp = NULL;
 	}
 }
 
@@ -192,7 +195,7 @@ int main(int argc, char **argv) {
     double elt;
     elt = timer();
 
-    parallel_mergesort(A, B, 0, n);
+    parallel_mergesort(A, 0, n - 1, B, 0);
 
     elt = timer() - elt;
 
