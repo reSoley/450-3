@@ -10,7 +10,6 @@
 
 // From the provided flt_val_sort.c file
 static double timer() {
-
 	struct timeval tp;
 	gettimeofday(&tp, NULL);
 	return ((double) (tp.tv_sec) + 1e-6 * tp.tv_usec);
@@ -25,6 +24,7 @@ struct wc_pair {
 
 struct hashtable {
 	struct wc_pair **table;
+	int num_unique_words;
 	int size;
 };
 
@@ -41,10 +41,12 @@ struct hashtable *init_hashtable() {
 	//TODO: SMARTER SIZE CHOICE
 	int new_size = 701;
 
+	int new_num_unique_words = 0;
 	struct wc_pair **new_table = (struct wc_pair **) malloc(new_size * sizeof(struct wc_pair *));
 
 	struct hashtable *new_hashtable = (struct hashtable *) malloc(sizeof(struct hashtable));
 	new_hashtable -> table = new_table;
+	new_hashtable -> num_unique_words = new_num_unique_words;
 	new_hashtable -> size = new_size;
 
 	return new_hashtable;
@@ -71,6 +73,7 @@ void insert_serial(struct hashtable *table, char *ins_word) {
 	struct wc_pair *prev;
 	if (!cur) {
 		table -> table[index] = init_wc_pair(ins_word);
+		table -> num_unique_words++;
 	} else {
 		while (cur && isUpdated == 0) {
 			if (strcmp(cur -> word, ins_word) == 0) {
@@ -84,6 +87,7 @@ void insert_serial(struct hashtable *table, char *ins_word) {
 		
 		if (isUpdated == 0) {
 			prev -> next = init_wc_pair(ins_word);
+			table -> num_unique_words++;
 		}
 	}
 }
@@ -110,6 +114,8 @@ void insert_parallel(struct hashtable *table, char *ins_word, omp_lock_t *locks)
 	struct wc_pair *cur = table -> table[index];
 	if (!cur) {
 		table -> table[index] = init_wc_pair(ins_word);
+#pragma omp atomic
+		table -> num_unique_words++;
 	} else {
 		while (cur && isUpdated == 0) {
 			if (strcmp(cur -> word, ins_word) == 0) {
@@ -123,6 +129,8 @@ void insert_parallel(struct hashtable *table, char *ins_word, omp_lock_t *locks)
 		
 		if (isUpdated == 0) {
 			prev -> next = init_wc_pair(ins_word);
+#pragma omp atomic
+			table -> num_unique_words++;
 		}
 	}
 	omp_unset_lock(&(locks[index]));
@@ -209,15 +217,17 @@ int main(int argc, char **argv) {
 			struct wc_pair *cur = ht -> table[i];
 
 			while (cur) {
-				printf("(%s, %d) ", cur -> word, cur -> count);
+				printf("(%s, %d)\n", cur -> word, cur -> count);
 				cur = cur -> next;
 			}
 		}
 	}
 	printf("\n");
-	//END STUFF
 
+	printf("%d unique words\n", ht -> num_unique_words);
 	printf("Time: %9.3lf ms.\n", elt*1e3);
+
+	//END STUFF
 
 	free(str_array);
 
