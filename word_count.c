@@ -8,6 +8,15 @@
 #include <omp.h>
 #endif
 
+// From the provided flt_val_sort.c file
+static double timer() {
+
+	struct timeval tp;
+	gettimeofday(&tp, NULL);
+	return ((double) (tp.tv_sec) + 1e-6 * tp.tv_usec);
+}
+
+
 struct wc_pair {
 	char 	*word;
 	int 	count;
@@ -53,7 +62,7 @@ unsigned long hash(unsigned char *word) {
 	return hash;
 }
 
-void insert(struct hashtable *table, char *ins_word) {
+void insert_serial(struct hashtable *table, char *ins_word) {
 	unsigned long hashed = hash(ins_word);
 	int index = hashed % (table -> size);
 	int isUpdated = 0;
@@ -79,23 +88,81 @@ void insert(struct hashtable *table, char *ins_word) {
 	}
 }
 
-// From the provided flt_val_sort.c file
-static double timer() {
+double wc_serial(struct hashtable *ht, char **str_loc_array, int num_strings) {
+	double elt;
+	elt = timer();
 
-	struct timeval tp;
-	gettimeofday(&tp, NULL);
-	return ((double) (tp.tv_sec) + 1e-6 * tp.tv_usec);
+	for (int i = 0; i < num_strings; i++) {
+		insert_serial(ht, str_loc_array[i]);
+	}
+
+	return timer() - elt;
+}
+
+void insert_parallel(struct hashtable *table, char *ins_word, omp_lock_t *locks) {
+	unsigned long hashed = hash(ins_word);
+	int index = hashed % (table -> size);
+	int isUpdated = 0;
+
+	struct wc_pair *prev;
+
+	omp_set_lock(&(locks[index]));
+	struct wc_pair *cur = table -> table[index];
+	if (!cur) {
+		table -> table[index] = init_wc_pair(ins_word);
+	} else {
+		while (cur && isUpdated == 0) {
+			if (strcmp(cur -> word, ins_word) == 0) {
+				(cur -> count)++;
+				isUpdated = 1;
+			} else {
+				prev = cur;
+				cur = cur -> next;
+			}
+		}
+		
+		if (isUpdated == 0) {
+			prev -> next = init_wc_pair(ins_word);
+		}
+	}
+	omp_unset_lock(&(locks[index]));
+}
+
+double wc_parallel(struct hashtable *ht, char **str_loc_array, int num_strings) {
+	omp_lock_t locks[ht -> size];
+	for (int i = 0; i < ht -> size; i++) {
+		omp_init_lock(&(locks[i]));
+	}
+
+	double elt;
+	elt = timer();
+
+#pragma omp parallel for
+	for (int i = 0; i < num_strings; i++) {
+		insert_parallel(ht, str_loc_array[i], locks);
+	}
+
+	elt = timer() - elt;
+
+	for (int i = 0; i < ht -> size; i++) {
+		omp_destroy_lock(&(locks[i]));
+	}
+
+	return elt;
 }
 
 int main(int argc, char **argv) {
 
-	if (argc != 3) {
-		fprintf(stderr, "%s <input_file> <n>\n", argv[0]);
+	if (argc != 4) {
+		fprintf(stderr, "%s <input_file> <n> <algorithm>\n", argv[0]);
+		fprintf(stderr, "    algorithm: 0 serial\n               1 parallel\n");
+
 		exit(1);
 	}
 
 	char *filename = argv[1];
 	int num_strings = atoi(argv[2]);
+	int algorithm = atoi(argv[3]);
 
 	FILE *fp;
 	fp = fopen(filename, "rb");
@@ -127,14 +194,14 @@ int main(int argc, char **argv) {
 	}
 	assert(num_strings_actual == num_strings);
 
-	double elt;
-	elt = timer();
-
 	//DO STUFF HERE
 	struct hashtable *ht = init_hashtable();
 
-	for (int i = 0; i < num_strings; i++) {
-		insert(ht, str_loc_array[i]);
+	double elt;
+	if (algorithm == 0) {
+		elt = wc_serial(ht, str_loc_array, num_strings);
+	} else if (algorithm == 1) {
+		elt = wc_parallel(ht, str_loc_array, num_strings);
 	}
 
 	for (int i = 0; i < (ht -> size); i++) {
@@ -148,8 +215,9 @@ int main(int argc, char **argv) {
 		}
 	}
 	printf("\n");
+	//END STUFF
 
-	elt = timer() - elt;
+	printf("Time: %9.3lf ms.\n", elt*1e3);
 
 	free(str_array);
 
