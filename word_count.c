@@ -96,7 +96,8 @@ double wc_serial(struct hashtable *ht, char **str_loc_array, int num_strings) {
 	double elt;
 	elt = timer();
 
-	for (int i = 0; i < num_strings; i++) {
+	int i;
+	for (i = 0; i < num_strings; i++) {
 		insert_serial(ht, str_loc_array[i]);
 	}
 
@@ -137,8 +138,10 @@ void insert_parallel(struct hashtable *table, char *ins_word, omp_lock_t *locks)
 }
 
 double wc_parallel(struct hashtable *ht, char **str_loc_array, int num_strings) {
+	int i;
+
 	omp_lock_t locks[ht -> size];
-	for (int i = 0; i < ht -> size; i++) {
+	for (i = 0; i < ht -> size; i++) {
 		omp_init_lock(&(locks[i]));
 	}
 
@@ -146,13 +149,13 @@ double wc_parallel(struct hashtable *ht, char **str_loc_array, int num_strings) 
 	elt = timer();
 
 #pragma omp parallel for
-	for (int i = 0; i < num_strings; i++) {
+	for (i = 0; i < num_strings; i++) {
 		insert_parallel(ht, str_loc_array[i], locks);
 	}
 
 	elt = timer() - elt;
 
-	for (int i = 0; i < ht -> size; i++) {
+	for (i = 0; i < ht -> size; i++) {
 		omp_destroy_lock(&(locks[i]));
 	}
 
@@ -160,7 +163,6 @@ double wc_parallel(struct hashtable *ht, char **str_loc_array, int num_strings) 
 }
 
 int main(int argc, char **argv) {
-
 	if (argc != 4) {
 		fprintf(stderr, "%s <input_file> <n> <algorithm>\n", argv[0]);
 		fprintf(stderr, "    algorithm: 0 serial\n               1 parallel\n");
@@ -190,7 +192,8 @@ int main(int argc, char **argv) {
 	str_loc_array[0] = &str_array[0];
 
 	int num_strings_actual = 0;
-	for (int i = 0; i < num_bytes; i++) {
+	int i;
+	for (i = 0; i < num_bytes; i++) {
 		if (str_array[i] == '\n') {
 			str_array[i] = '\0';
 			num_strings_actual++;
@@ -212,7 +215,7 @@ int main(int argc, char **argv) {
 		elt = wc_parallel(ht, str_loc_array, num_strings);
 	}
 
-	for (int i = 0; i < (ht -> size); i++) {
+	for (i = 0; i < (ht -> size); i++) {
 		if (ht -> table[i]) {
 			struct wc_pair *cur = ht -> table[i];
 
@@ -226,7 +229,6 @@ int main(int argc, char **argv) {
 
 	printf("%d unique words\n", ht -> num_unique_words);
 	printf("Time: %9.3lf ms.\n", elt*1e3);
-
 	//END STUFF
 
 	free(str_array);
