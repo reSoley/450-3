@@ -65,7 +65,7 @@ unsigned long hash(unsigned char *word) {
 }
 
 void insert_serial(struct hashtable *table, char *ins_word) {
-	unsigned long hashed = hash(ins_word);
+	unsigned long hashed = hash((unsigned char *)ins_word);
 	int index = hashed % (table -> size);
 	int isUpdated = 0;
 
@@ -105,7 +105,7 @@ double wc_serial(struct hashtable *ht, char **str_loc_array, int num_strings) {
 }
 
 void insert_parallel(struct hashtable *table, char *ins_word, omp_lock_t *locks) {
-	unsigned long hashed = hash(ins_word);
+	unsigned long hashed = hash((unsigned char *)ins_word);
 	int index = hashed % (table -> size);
 	int isUpdated = 0;
 
